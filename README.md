@@ -1,183 +1,108 @@
 # Test Radar
 
-Un sistema inteligente de pruebas unitarias con detección y corrección de errores, integrado con Claude a través de AWS Bedrock para análisis avanzado.
+Sistema automatizado de análisis y ejecución de pruebas con capacidades de análisis avanzado mediante AWS Bedrock.
 
-## Características
+## Características Implementadas
 
-- 🔍 Detección automática de tests
-- ⚡ Ejecución paralela de tests
-- 📊 Análisis de cobertura
-- 🤖 Análisis inteligente con Claude vía AWS Bedrock
-- 🛠️ Sugerencias de corrección automática
-- 📝 Reportes detallados
-- 🎯 Integración con VSCode
+- Escaneo automático de tests en el proyecto
+- Ejecución paralela de tests
+- Generación de reportes detallados
+- Sistema de análisis local como respaldo
+- Manejo de errores robusto
+- Reportes en formato HTML y JSON
 
-## Requisitos
+## Resultados de la Prueba Inicial
 
-- Python 3.11.11 o superior
-- Poetry para gestión de dependencias
-- Cuenta AWS con acceso a Bedrock
-- VSCode (opcional, para integración con el editor)
+- Se detectaron 12 tests en el proyecto API-H2H
+- Se identificaron problemas en la ejecución de los tests
+- Se generaron sugerencias de mejora básicas
+- Se guardaron reportes en el directorio `reports/`
 
-## Instalación
+## Configuración
 
-1. Clonar el repositorio:
+1. Clona el repositorio:
 ```bash
-git clone <repository-url>
-cd test-radar
+git clone https://github.com/jivagrisma/script-test-radar.git
+cd script-test-radar
 ```
 
-2. Instalar dependencias con Poetry:
+2. Copia el archivo de configuración de ejemplo:
 ```bash
-poetry install
+cp test_config.example.json test_config.json
 ```
 
-3. Configurar variables de entorno:
+3. Instala las dependencias:
 ```bash
-cp .env.example .env
-```
-
-Editar .env con tus configuraciones, especialmente las credenciales de AWS:
-```env
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_REGION=us-east-1
-AWS_BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
+./setup.sh
 ```
 
 ## Configuración de AWS Bedrock
 
-1. Asegúrate de tener una cuenta AWS con acceso a Bedrock
+Para utilizar el análisis avanzado con Claude, necesitarás:
 
-2. Verifica que tienes acceso al modelo Claude en tu región:
-```bash
-aws bedrock list-foundation-models --region us-east-1
-```
+1. Acceder a la consola de AWS Bedrock
+2. Crear un perfil de inferencia para el modelo `anthropic.claude-3-5-sonnet-20241022-v2:0`
+3. Configurar el throughput según tus necesidades
+4. Actualizar `test_config.json` con:
+   - AWS Access Key ID
+   - AWS Secret Access Key
+   - Region
+   - ARN del perfil de inferencia
 
-3. Configura las credenciales de AWS:
-   - Usa las variables de entorno mencionadas arriba, o
-   - Configura el CLI de AWS: `aws configure`
+## Próximos Pasos
 
-4. (Opcional) Ajusta la configuración del modelo en `config.json`:
-```json
-{
-  "llm": {
-    "temperature": 0.7,
-    "max_tokens": 2000,
-    "context_window": 100000,
-    "aws": {
-      "region": "us-east-1",
-      "bedrock_model_id": "anthropic.claude-3-sonnet-20240229-v1:0"
-    }
-  }
-}
-```
+### Configuración de AWS Bedrock
+- [ ] Crear un perfil de inferencia para el modelo Claude
+- [ ] Configurar el throughput adecuado
+- [ ] Actualizar la configuración con el ARN del perfil
+
+### Mejoras en el Análisis
+- [ ] Implementar análisis de cobertura detallado
+- [ ] Mejorar el análisis local con más heurísticas
+- [ ] Añadir detección de patrones comunes de error
+
+### Integración con VSCode
+- [ ] Implementar la extensión VSCode
+- [ ] Añadir decoradores visuales
+- [ ] Integrar con el debugger
+
+### Documentación
+- [ ] Crear guía de usuario detallada
+- [ ] Documentar la API
+- [ ] Añadir ejemplos de uso
 
 ## Uso
 
-### CLI
-
-1. Escanear tests en un directorio:
 ```bash
-poetry run python -m src.main scan ./tests
+# Ejecutar análisis de tests
+python test_run.py
+
+# Ver reportes generados
+open reports/test_report.html
 ```
-
-2. Ejecutar tests con análisis de Claude:
-```bash
-poetry run python -m src.main run ./tests --coverage
-```
-
-3. Analizar tests sin ejecutarlos:
-```bash
-poetry run python -m src.main analyze ./tests
-```
-
-### Opciones Comunes
-
-- `--config/-c`: Especificar archivo de configuración
-- `--parallel/--no-parallel`: Habilitar/deshabilitar ejecución paralela
-- `--coverage/--no-coverage`: Habilitar/deshabilitar análisis de cobertura
-- `--report/-r`: Guardar reporte en archivo
-- `--fix/--no-fix`: Aplicar correcciones automáticamente
-
-## Integración con VSCode
-
-1. Instalar la extensión Test Radar desde el marketplace
-
-2. Configurar la extensión:
-   - Abrir configuración de VSCode
-   - Buscar "Test Radar"
-   - Ajustar configuraciones según necesidades
-
-3. Usar las funcionalidades:
-   - Ver tests en el explorador de tests
-   - Ejecutar/debuggear tests
-   - Ver resultados y análisis
-   - Aplicar correcciones sugeridas
 
 ## Estructura del Proyecto
 
 ```
 test-radar/
-├── pyproject.toml         # Configuración del proyecto
-├── requirements.txt       # Dependencias
 ├── src/
-│   ├── core/             # Funcionalidad central
-│   │   ├── config.py     # Configuración
-│   │   ├── logger.py     # Sistema de logging
-│   │   └── exceptions.py # Manejo de errores
-│   ├── scanner/          # Sistema de escaneo
-│   ├── executor/         # Ejecución de tests
-│   ├── reporter/         # Generación de reportes
-│   ├── analyzer/         # Análisis con Claude
-│   └── vscode/          # Integración con VSCode
-└── tests/               # Tests del propio script
+│   ├── analyzer/      # Análisis de tests
+│   ├── scanner/       # Escaneo de tests
+│   ├── executor/      # Ejecución de tests
+│   ├── reporter/      # Generación de reportes
+│   └── core/          # Funcionalidades core
+├── reports/           # Reportes generados
+└── test_config.json   # Configuración (no incluido en git)
 ```
-
-## Desarrollo
-
-1. Configurar entorno de desarrollo:
-```bash
-poetry install --with dev
-pre-commit install
-```
-
-2. Ejecutar tests:
-```bash
-poetry run pytest
-```
-
-3. Verificar estilo:
-```bash
-poetry run black .
-poetry run isort .
-```
-
-## Troubleshooting
-
-### Problemas Comunes con AWS Bedrock
-
-1. Error de autenticación:
-   - Verifica tus credenciales de AWS
-   - Asegúrate de tener los permisos necesarios
-   - Comprueba la región configurada
-
-2. Error de cuota excedida:
-   - Revisa tus límites de uso en AWS Bedrock
-   - Considera aumentar la cuota si es necesario
-
-3. Error de modelo no disponible:
-   - Verifica que el modelo esté disponible en tu región
-   - Comprueba el ID del modelo en la configuración
 
 ## Contribuir
 
 1. Fork el repositorio
-2. Crear rama feature (`git checkout -b feature/amazing-feature`)
-3. Commit cambios (`git commit -m 'Add amazing feature'`)
+2. Crea una rama para tu feature (`git checkout -b feature/amazing-feature`)
+3. Commit tus cambios (`git commit -m 'feat: add amazing feature'`)
 4. Push a la rama (`git push origin feature/amazing-feature`)
-5. Abrir Pull Request
+5. Abre un Pull Request
 
 ## Licencia
 
-Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
