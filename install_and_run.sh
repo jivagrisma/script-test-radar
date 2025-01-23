@@ -1,119 +1,85 @@
 #!/bin/bash
 
-# Exit on error
-set -e
-
 # Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Print with color
-print_color() {
-    color=$1
-    message=$2
-    echo -e "${color}${message}${NC}"
-}
+echo -e "${GREEN}Iniciando instalación de Test Radar...${NC}"
 
-# Check if Docker is installed
-check_docker() {
-    if ! command -v docker &> /dev/null; then
-        print_color $RED "Docker is not installed. Please install Docker first."
-        exit 1
-    fi
+# Verificar Docker
+echo -e "\n${YELLOW}Verificando instalación de Docker...${NC}"
+if ! command -v docker &> /dev/null; then
+    echo -e "${RED}Docker no está instalado. Por favor, instale Docker primero.${NC}"
+    exit 1
+fi
 
-    if ! command -v docker-compose &> /dev/null; then
-        print_color $RED "Docker Compose is not installed. Please install Docker Compose first."
-        exit 1
-    fi
-}
+if ! command -v docker-compose &> /dev/null; then
+    echo -e "${RED}Docker Compose no está instalado. Por favor, instale Docker Compose primero.${NC}"
+    exit 1
+fi
 
-# Check AWS credentials
-check_aws_credentials() {
-    if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-        if [ ! -f ".env" ]; then
-            print_color $YELLOW "AWS credentials not found in environment."
-            print_color $YELLOW "Creating .env file from template..."
-            cp .env.example .env
-            print_color $YELLOW "Please update .env with your AWS credentials."
-            exit 1
-        fi
-    fi
-}
+# Crear directorios necesarios
+echo -e "\n${YELLOW}Creando directorios...${NC}"
+mkdir -p reports .cache test_samples
 
-# Create necessary directories
-create_directories() {
-    print_color $GREEN "Creating necessary directories..."
-    mkdir -p reports .cache
-}
+# Verificar credenciales de AWS
+echo -e "\n${YELLOW}Verificando credenciales de AWS...${NC}"
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo -e "${YELLOW}No se encontraron credenciales de AWS en el entorno.${NC}"
 
-# Build Docker image
-build_docker() {
-    print_color $GREEN "Building Docker image..."
-    docker-compose build
-}
+    # Solicitar credenciales
+    read -p "Ingrese AWS Access Key ID: " aws_access_key
+    read -p "Ingrese AWS Secret Access Key: " aws_secret_key
+    read -p "Ingrese AWS Region [us-east-1]: " aws_region
+    aws_region=${aws_region:-us-east-1}
 
-# Run tests
-run_tests() {
-    local test_path=$1
-    print_color $GREEN "Running tests in ${test_path}..."
+    # Crear archivo .env
+    echo "AWS_ACCESS_KEY_ID=$aws_access_key" > .env
+    echo "AWS_SECRET_ACCESS_KEY=$aws_secret_key" >> .env
+    echo "AWS_REGION=$aws_region" >> .env
 
-    # Export test path for docker-compose
-    export TEST_PATH=$test_path
+    echo -e "${GREEN}Credenciales guardadas en .env${NC}"
+fi
 
-    # Run tests with docker-compose
-    docker-compose run --rm test-radar run $test_path
-}
-
-# Main installation and setup
-main() {
-    print_color $GREEN "Starting Test Radar installation and setup..."
-
-    # Check requirements
-    check_docker
-    check_aws_credentials
-
-    # Setup
-    create_directories
-    build_docker
-
-    # If test path is provided, run tests
-    if [ ! -z "$1" ]; then
-        run_tests "$1"
+# Verificar archivo de configuración
+echo -e "\n${YELLOW}Verificando archivo de configuración...${NC}"
+if [ ! -f "test_config.json" ]; then
+    if [ -f "test_config.example.json" ]; then
+        cp test_config.example.json test_config.json
+        echo -e "${GREEN}Archivo de configuración creado desde ejemplo${NC}"
     else
-        print_color $YELLOW "No test path provided. To run tests:"
-        print_color $YELLOW "./install_and_run.sh /path/to/tests"
+        echo -e "${RED}No se encontró archivo de configuración ejemplo${NC}"
+        exit 1
     fi
-}
+fi
 
-# Show help
-show_help() {
-    echo "Usage: $0 [test_path]"
-    echo
-    echo "Options:"
-    echo "  test_path    Path to test directory or file"
-    echo
-    echo "Environment variables:"
-    echo "  AWS_ACCESS_KEY_ID         AWS access key ID"
-    echo "  AWS_SECRET_ACCESS_KEY     AWS secret access key"
-    echo "  AWS_REGION               AWS region (default: us-east-1)"
-    echo "  TEST_PARALLEL_JOBS       Number of parallel test jobs (default: 2)"
-    echo "  TEST_TIMEOUT            Test timeout in seconds (default: 300)"
-    echo "  TEST_COVERAGE_TARGET    Coverage target percentage (default: 95.0)"
-    echo "  LOG_LEVEL              Logging level (default: INFO)"
-}
+# Construir imagen Docker
+echo -e "\n${YELLOW}Construyendo imagen Docker...${NC}"
+docker-compose build
 
-# Parse command line arguments
-case "$1" in
-    -h|--help)
-        show_help
-        exit 0
-        ;;
-    "")
-        main
-        ;;
-    *)
-        main "$1"
-        ;;
-esac
+# Verificar directorio de tests
+echo -e "\n${YELLOW}Verificando directorio de tests...${NC}"
+if [ ! -d "test_samples" ] || [ -z "$(ls -A test_samples)" ]; then
+    echo -e "${YELLOW}No se encontraron archivos de test en test_samples.${NC}"
+    echo -e "Por favor, coloque sus archivos de test en el directorio test_samples/"
+    echo -e "Ejemplo de estructura:"
+    echo -e "test_samples/"
+    echo -e "  ├── test_calculator.py"
+    echo -e "  └── test_api.py"
+fi
+
+# Instrucciones finales
+echo -e "\n${GREEN}Instalación completada!${NC}"
+echo -e "\nPara ejecutar el análisis:"
+echo -e "1. Coloque sus archivos de test en el directorio test_samples/"
+echo -e "2. Ejecute: ${YELLOW}docker-compose up${NC}"
+echo -e "\nLos resultados se guardarán en el directorio reports/"
+
+# Preguntar si desea ejecutar el análisis ahora
+read -p "¿Desea ejecutar el análisis ahora? (s/N): " run_now
+if [[ $run_now =~ ^[Ss]$ ]]; then
+    echo -e "\n${YELLOW}Ejecutando análisis...${NC}"
+    docker-compose up
+fi

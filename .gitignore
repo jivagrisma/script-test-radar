@@ -47,7 +47,6 @@ coverage/
 # Project specific
 reports/
 .cache/
-chroma_db/
 *.log
 test_config.json
 

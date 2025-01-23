@@ -57,7 +57,7 @@ class BedrockLLM:
         # Configure AWS client with retry logic
         aws_config = Config(
             region_name=config.aws.region,
-            retries={"max_attempts": 3, "mode": "adaptive"}
+            retries={"max_attempts": 3, "mode": "adaptive"},
         )
 
         # Initialize Bedrock client with credentials
@@ -66,13 +66,6 @@ class BedrockLLM:
             aws_access_key_id=config.aws.access_key_id,
             aws_secret_access_key=config.aws.secret_access_key,
             config=aws_config,
-        )
-
-        # Set model-specific headers
-        self.headers = (
-            {"anthropic-beta": "prompt-caching-2024-07-31"}
-            if "claude-3" in config.aws.bedrock_model_id
-            else {}
         )
 
     async def generate(self, prompt: str) -> str:
@@ -88,35 +81,25 @@ class BedrockLLM:
             LLMError: If generation fails with detailed error information.
         """
         try:
-            # Prepare request body for Claude Messages API
+            # Prepare request body for Claude
             request_body = {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt,
-                                "cache_control": {"type": "ephemeral"},
-                            }
-                        ],
-                    }
-                ],
+                "anthropic_version": "bedrock-2023-05-31",
+                "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": self.config.max_tokens,
                 "temperature": self.config.temperature,
-                "anthropic_version": "bedrock-2023-05-31",
             }
 
-            # Invoke model with headers
+            # Invoke model
             response = self.client.invoke_model(
                 modelId=self.config.aws.bedrock_model_id,
                 body=json.dumps(request_body),
-                headers=self.headers,
+                contentType="application/json",
+                accept="application/json",
             )
 
             # Parse response
             response_body = json.loads(response["body"].read())
-            return response_body["messages"][0]["content"][0]["text"]
+            return response_body["content"][0]["text"]
 
         except Exception as e:
             # Enhanced error handling with specific error types

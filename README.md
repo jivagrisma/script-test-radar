@@ -1,191 +1,213 @@
 # Test Radar
 
-Sistema inteligente de análisis y ejecución de pruebas con integración de AWS Bedrock (Claude) para proporcionar análisis avanzado y sugerencias de mejora.
+Test Radar es una herramienta de análisis inteligente de tests que utiliza AWS Bedrock y Claude 3.5 Sonnet para proporcionar sugerencias de mejora y detectar problemas potenciales en tus tests de Python.
 
-## Características Principales
+## Características
 
-- Escaneo automático de tests en el proyecto
-- Ejecución paralela de tests
-- Análisis inteligente usando AWS Bedrock (Claude)
-- Generación de reportes detallados
-- Sistema de análisis local como respaldo
-- Integración con VSCode Test Explorer
-- Soporte para múltiples frameworks de prueba
-- Dockerizado para fácil instalación y ejecución
+- Análisis estático de código de tests
+- Sugerencias de mejora basadas en IA
+- Detección de patrones y anti-patrones
+- Recomendaciones de cobertura
+- Análisis de rendimiento
+- Generación de informes detallados
 
 ## Requisitos
 
-- Docker 20.10 o superior
-- Docker Compose 2.0 o superior
-- Cuenta AWS con acceso a Bedrock
-- Credenciales AWS configuradas
+- Docker y Docker Compose
+- Credenciales de AWS con acceso a Bedrock
+- Python 3.9+ (para desarrollo local)
 
 ## Instalación Rápida
 
 1. Clonar el repositorio:
 ```bash
-git clone https://github.com/jivagrisma/script-test-radar.git
-cd script-test-radar
+git clone <repository-url>
+cd test-radar
 ```
 
-2. Dar permisos de ejecución al script de instalación:
+2. Ejecutar el script de instalación:
 ```bash
 chmod +x install_and_run.sh
-```
-
-3. Ejecutar el script de instalación:
-```bash
 ./install_and_run.sh
 ```
 
-## Configuración
-
-### Variables de Entorno
-
-Crear archivo `.env` basado en `.env.example`:
-
-```bash
-cp .env.example .env
-```
-
-Variables principales:
-- `AWS_ACCESS_KEY_ID`: ID de clave de acceso AWS
-- `AWS_SECRET_ACCESS_KEY`: Clave secreta AWS
-- `AWS_REGION`: Región AWS (default: us-east-1)
-- `TEST_PARALLEL_JOBS`: Número de jobs paralelos (default: 2)
-- `TEST_TIMEOUT`: Timeout en segundos (default: 300)
-- `TEST_COVERAGE_TARGET`: Objetivo de cobertura (default: 95.0)
-- `LOG_LEVEL`: Nivel de logging (default: INFO)
-
-### Configuración de AWS Bedrock
-
-1. Crear un perfil de inferencia para el modelo `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
-2. Actualizar `test_config.json` con las credenciales AWS
-3. Configurar variables de entorno en `.env`
+El script realizará automáticamente:
+- Verificación de requisitos
+- Configuración de credenciales AWS
+- Creación de directorios necesarios
+- Construcción de la imagen Docker
+- Configuración inicial
 
 ## Uso
 
-### Escanear Tests
+### 1. Preparación de Tests
 
+Coloca tus archivos de test en el directorio `test_samples/`. Por ejemplo:
+
+```
+test_samples/
+├── test_calculator.py
+└── test_api.py
+```
+
+### 2. Configuración
+
+El archivo `test_config.json` contiene la configuración del análisis:
+
+```json
+{
+  "test": {
+    "python_path": "python3",
+    "test_paths": ["test_samples"],
+    "exclude_patterns": ["__pycache__", ".pytest_cache"],
+    "parallel_jobs": 2,
+    "timeout": 300,
+    "coverage_target": 90.0
+  },
+  "llm": {
+    "temperature": 0.1,
+    "max_tokens": 8192,
+    "aws": {
+      "access_key_id": "tu_access_key",
+      "secret_access_key": "tu_secret_key",
+      "region": "us-east-1",
+      "bedrock_model_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    }
+  }
+}
+```
+
+### 3. Ejecución del Análisis
+
+#### Usando Docker (Recomendado):
 ```bash
-./install_and_run.sh scan /path/to/tests
+docker-compose up
 ```
 
-Opciones:
-- `--pattern`: Patrón para encontrar tests (default: test_*.py)
-
-### Ejecutar Tests
-
+#### Localmente:
 ```bash
-./install_and_run.sh run /path/to/tests
+python3 run_analysis.py
 ```
 
-Opciones:
-- `--parallel/--no-parallel`: Ejecutar tests en paralelo (default: true)
-- `--coverage/--no-coverage`: Recolectar datos de cobertura (default: true)
-- `--report`: Guardar reporte en archivo
+### 4. Resultados
 
-### Analizar Tests
+Los resultados se guardan en el directorio `reports/` en formato Markdown. Para cada test, se proporciona:
 
-```bash
-./install_and_run.sh analyze /path/to/tests
+- Lista de problemas potenciales
+- Sugerencias de mejora
+- Ejemplos de código
+- Recomendaciones de cobertura
+- Métricas de rendimiento
+
+## Ejemplos de Uso
+
+### 1. Análisis de Tests Unitarios
+```python
+# test_samples/test_calculator.py
+class TestCalculator(unittest.TestCase):
+    def test_add(self):
+        calc = Calculator()
+        self.assertEqual(calc.add(2, 3), 5)
 ```
 
-Opciones:
-- `--fix/--no-fix`: Aplicar correcciones automáticamente (default: false)
+Test Radar analizará este código y sugerirá mejoras como:
+- Agregar pruebas parametrizadas
+- Implementar property-based testing
+- Mejorar la documentación
+- Agregar casos límite
 
-## Estructura del Proyecto
-
-```
-test-radar/
-├── src/                # Código fuente
-│   ├── analyzer/      # Análisis con AWS Bedrock
-│   ├── core/          # Funcionalidad core
-│   ├── executor/      # Ejecución de tests
-│   ├── reporter/      # Generación de reportes
-│   └── scanner/       # Detección de tests
-├── tests/             # Tests del proyecto
-├── Dockerfile         # Configuración de Docker
-├── docker-compose.yml # Orquestación de servicios
-├── install_and_run.sh # Script de instalación y ejecución
-├── pyproject.toml     # Configuración del proyecto
-├── requirements.txt   # Dependencias
-└── test_config.json  # Configuración principal
+### 2. Análisis de Tests de API
+```python
+# test_samples/test_api.py
+class TestUserAPI(unittest.TestCase):
+    def test_create_user(self):
+        api = UserAPI()
+        user = api.create_user("test", "test@example.com")
+        self.assertEqual(user.username, "test")
 ```
 
-## Desarrollo con Docker
+Test Radar sugerirá mejoras como:
+- Agregar validación de entrada
+- Implementar pruebas de concurrencia
+- Mejorar el manejo de errores
+- Agregar pruebas de rendimiento
 
-### Construir la imagen
+## Integración Continua
 
-```bash
-docker-compose build
+Puedes integrar Test Radar en tu pipeline de CI/CD:
+
+```yaml
+# .github/workflows/test-radar.yml
+name: Test Analysis
+on: [push, pull_request]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Test Radar
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          docker-compose up
 ```
 
-### Ejecutar tests en contenedor
+## Personalización
 
-```bash
-docker-compose run --rm test-radar run /path/to/tests
+### Configuración del Modelo
+
+Puedes ajustar el comportamiento del modelo en `test_config.json`:
+
+```json
+{
+  "llm": {
+    "temperature": 0.1,  // Más bajo para respuestas más conservadoras
+    "max_tokens": 8192,  // Ajustar según necesidad
+    "context_window": 100000
+  }
+}
 ```
 
-### Ver logs
+### Patrones de Análisis
 
-```bash
-docker-compose logs -f
-```
+El sistema busca automáticamente:
+- Falta de assertions
+- Pruebas no deterministas
+- Código duplicado
+- Falta de documentación
+- Problemas de rendimiento
+- Casos límite no probados
 
-### Limpiar contenedores y volúmenes
+## Solución de Problemas
 
-```bash
-docker-compose down -v
+### Error de Credenciales AWS
 ```
+Error: Failed to generate response: AccessDeniedException
+```
+Solución: Verifica tus credenciales AWS y asegúrate de tener acceso a Bedrock.
 
-## Troubleshooting
-
-### Problemas Comunes con Docker
-
-1. Error de permisos:
+### Error de Timeout
 ```
-Got permission denied while trying to connect to the Docker daemon socket
+Error: Failed to generate response: ThrottlingException
 ```
-Solución:
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-2. Error de memoria:
-```
-Killed
-```
-Solución: Aumentar memoria en Docker Desktop settings
-
-### Problemas con AWS Bedrock
-
-1. Error de autenticación:
-```
-BedRockError: Access denied
-```
-Solución:
-- Verificar credenciales en .env
-- Confirmar permisos IAM
-- Verificar región AWS
-
-2. Error de modelo:
-```
-BedRockError: Model not found
-```
-Solución:
-- Verificar ID del modelo
-- Confirmar acceso al modelo en Bedrock
+Solución: Aumenta el valor de `timeout` en la configuración o reduce la cantidad de tests simultáneos.
 
 ## Contribuir
 
 1. Fork el repositorio
-2. Crear rama para feature (`git checkout -b feature/amazing-feature`)
-3. Commit cambios (`git commit -m 'feat: add amazing feature'`)
-4. Push a la rama (`git push origin feature/amazing-feature`)
-5. Abrir Pull Request
+2. Crea una rama para tu feature
+3. Haz commit de tus cambios
+4. Push a la rama
+5. Crea un Pull Request
 
 ## Licencia
 
-Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detalles.
+MIT
+
+## Soporte
+
+- Abre un issue en GitHub
+- Consulta la documentación
+- Contacta al equipo de desarrollo
