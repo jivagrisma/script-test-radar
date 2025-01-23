@@ -22,10 +22,8 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
-
-# Environment Variables
+env/
 .env
 
 # IDE
@@ -33,18 +31,40 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.project
+.pydevproject
+.settings/
 
-# Logs
+# Test and Coverage
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage/
+
+# Project specific
+reports/
+.cache/
+chroma_db/
 *.log
 
-# Reports
-reports/
+# AWS
+.aws/
+aws-credentials.json
 
-# Local development settings
+# Docker
+.docker/
+docker-compose.override.yml
+
+# System
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.temp
+
+# Local configuration
+test_config.local.json
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Configuration files with sensitive data
-test_config.json

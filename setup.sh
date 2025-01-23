@@ -1,58 +1,114 @@
 #!/bin/bash
 
-# Colores para output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Exit on error
+set -e
 
-echo -e "${BLUE}🚀 Configurando Test Radar...${NC}"
+echo "Setting up Test Radar..."
 
-# Verificar Python 3.11
-echo -e "\n${BLUE}📋 Verificando versión de Python...${NC}"
-if command -v python3.11 &>/dev/null; then
-    echo -e "${GREEN}✓ Python 3.11 encontrado${NC}"
-else
-    echo -e "${RED}✗ Python 3.11 no encontrado. Por favor, instálalo primero.${NC}"
+# Check Python version
+REQUIRED_PYTHON="3.11"
+python_version=$(python3.11 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+
+if [[ "$(printf '%s\n' "$REQUIRED_PYTHON" "$python_version" | sort -V | head -n1)" != "$REQUIRED_PYTHON" ]]; then
+    echo "Error: Python $REQUIRED_PYTHON or higher is required"
     exit 1
 fi
 
-# Verificar Poetry
-echo -e "\n${BLUE}📋 Verificando Poetry...${NC}"
-if command -v poetry &>/dev/null; then
-    echo -e "${GREEN}✓ Poetry encontrado${NC}"
-else
-    echo -e "${BLUE}⚙️ Instalando Poetry...${NC}"
-    curl -sSL https://install.python-poetry.org | python3 -
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python3.11 -m venv venv
 fi
 
-# Crear entorno virtual y instalar dependencias
-echo -e "\n${BLUE}📦 Instalando dependencias...${NC}"
-poetry install
+# Activate virtual environment
+source venv/bin/activate
 
-# Crear directorios necesarios
-echo -e "\n${BLUE}📁 Creando directorios...${NC}"
-mkdir -p .cache reports
+# Upgrade pip
+echo "Upgrading pip..."
+pip install --upgrade pip
 
-# Verificar credenciales AWS
-echo -e "\n${BLUE}🔑 Verificando credenciales AWS...${NC}"
-if [ -f ".env" ]; then
-    echo -e "${GREEN}✓ Archivo .env encontrado${NC}"
-else
-    echo -e "${BLUE}⚙️ Creando archivo .env...${NC}"
+# Install dependencies
+echo "Installing dependencies..."
+pip install -r requirements.txt
+
+# Create necessary directories
+echo "Creating project directories..."
+mkdir -p reports
+mkdir -p .cache
+
+# Check AWS credentials
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "Warning: AWS credentials not found in environment"
+    echo "Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+fi
+
+# Create config file if it doesn't exist
+if [ ! -f "test_config.json" ]; then
+    echo "Creating default configuration..."
+    cp test_config.example.json test_config.json
+    echo "Please update test_config.json with your AWS credentials"
+fi
+
+# Create .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    echo "Creating environment file..."
     cp .env.example .env
-    echo -e "${GREEN}✓ Archivo .env creado. Por favor, configura tus credenciales.${NC}"
+    echo "Please update .env with your configuration"
 fi
 
-# Verificar configuración
-echo -e "\n${BLUE}⚙️ Verificando configuración...${NC}"
-if [ -f "test_config.json" ]; then
-    echo -e "${GREEN}✓ Archivo de configuración encontrado${NC}"
-else
-    echo -e "${RED}✗ Archivo test_config.json no encontrado${NC}"
-    exit 1
-fi
+# Verify AWS Bedrock access
+echo "Verifying AWS Bedrock access..."
+python3.11 -c "
+import boto3
+import json
+import os
+import sys
 
-echo -e "\n${GREEN}✨ Configuración completada${NC}"
-echo -e "\n${BLUE}Para ejecutar la prueba:${NC}"
-echo -e "poetry run python test_run.py"
+try:
+    # Load config
+    with open('test_config.json', 'r') as f:
+        config = json.load(f)
+
+    # Configure client
+    client = boto3.client(
+        'bedrock-runtime',
+        aws_access_key_id=config['llm']['aws']['access_key_id'],
+        aws_secret_access_key=config['llm']['aws']['secret_access_key'],
+        region_name=config['llm']['aws']['region']
+    )
+
+    # Test model access with a simple prompt
+    response = client.invoke_model(
+        modelId=config['llm']['aws']['bedrock_model_id'],
+        body=json.dumps({
+            'anthropic_version': 'bedrock-2023-05-31',
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Test connection'
+                }
+            ],
+            'max_tokens': 10,
+            'temperature': 0
+        })
+    )
+    print('AWS Bedrock connection successful')
+
+except Exception as e:
+    print(f'Error verifying AWS Bedrock access: {str(e)}')
+    print('Please verify your AWS credentials and permissions')
+    sys.exit(1)
+"
+
+# Install pre-commit hooks
+echo "Setting up pre-commit hooks..."
+pre-commit install
+
+echo "Setup complete!"
+echo "Next steps:"
+echo "1. Update test_config.json with your AWS credentials"
+echo "2. Update .env with your configuration"
+echo "3. Run 'python test_run.py' to start the test analysis"
+
+# Deactivate virtual environment
+deactivate

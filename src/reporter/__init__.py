@@ -1,7 +1,8 @@
 """
-Módulo de generación de reportes
+Test reporter module.
+Provides functionality for generating test reports.
 """
 
-from .reporter import TestReporter, TestReport
+from .reporter import TestReport, TestReporter
 
-__all__ = ['TestReporter', 'TestReport']
+__all__ = ["TestReporter", "TestReport"]

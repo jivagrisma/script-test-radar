@@ -1,15 +1,15 @@
 """
 Test executor implementation.
-Provides functionality for running tests and collecting results.
+
+Handles parallel test execution and result collection.
 """
 
 import asyncio
+import concurrent.futures
 import subprocess
-import sys
+import time
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..core.config import TestConfig
 from ..core.exceptions import ExecutionError
@@ -18,167 +18,232 @@ from ..scanner.scanner import TestInfo
 
 logger = get_logger(__name__)
 
+
 @dataclass
 class TestResult:
-    """Result of a test execution"""
+    """Result of a test execution."""
+
     test_id: str
-    status: str  # 'passed', 'failed', 'error', 'skipped'
+    status: str  # "passed", "failed", "error", "skipped"
     duration: float
-    message: Optional[str] = None
-    traceback: Optional[str] = None
     stdout: Optional[str] = None
     stderr: Optional[str] = None
     coverage: Optional[float] = None
-    timestamp: datetime = datetime.now()
+    error_message: Optional[str] = None
+    error_type: Optional[str] = None
+    error_traceback: Optional[str] = None
+
 
 class TestExecutor:
-    """Executor for running tests"""
-    
-    def __init__(self, config: TestConfig):
-        self.config = config
-        self._running: Set[str] = set()
-        self._results: Dict[str, TestResult] = {}
-    
-    async def _run_test(self, test: TestInfo) -> TestResult:
-        """Run a single test
-        
+    """Executor for running tests in parallel."""
+
+    def __init__(self, config: TestConfig) -> None:
+        """Initialize executor with configuration.
+
         Args:
-            test: Test to run
-            
-        Returns:
-            Test execution result
+            config: Test configuration.
         """
-        if test.id in self._running:
-            raise ExecutionError(f"Test {test.id} is already running")
-        
-        self._running.add(test.id)
-        start_time = datetime.now()
-        
+        self.config = config
+        self.executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.config.parallel_jobs or None
+        )
+
+    async def run_test(self, test: TestInfo) -> TestResult:
+        """Run a single test.
+
+        Args:
+            test: Test to run.
+
+        Returns:
+            Test execution result.
+
+        Raises:
+            ExecutionError: If test execution fails.
+        """
+        start_time = time.time()
+
         try:
+            # Prepare pytest command
             cmd = [
                 self.config.python_path,
-                "-m", "pytest",
+                "-m",
+                "pytest",
                 str(test.file_path),
                 "-v",
                 "--tb=short",
                 f"--timeout={self.config.timeout}",
-                "--cov",
-                f"-k={test.name}"
+                "--capture=tee-sys",
             ]
-            
+
+            # Add coverage if enabled
+            if self.config.coverage_target > 0:
+                cmd.extend(
+                    [
+                        "--cov",
+                        "--cov-report=term-missing",
+                    ]
+                )
+
+            # Add test selection
             if test.class_name:
-                cmd.append(f"{test.class_name}::{test.name}")
+                cmd.append(f"{test.class_name}::{test.function_name}")
             else:
-                cmd.append(test.name)
-            
+                cmd.append(f"{test.function_name}")
+
+            # Run test in subprocess
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
-            
-            stdout, stderr = await process.communicate()
-            duration = (datetime.now() - start_time).total_seconds()
-            
-            stdout_str = stdout.decode() if stdout else None
-            stderr_str = stderr.decode() if stderr else None
-            
-            # Parse pytest output
+
+            # Wait for completion with timeout
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(), timeout=self.config.timeout
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                return TestResult(
+                    test_id=test.id,
+                    status="error",
+                    duration=time.time() - start_time,
+                    error_message="Test execution timed out",
+                    error_type="TimeoutError",
+                )
+
+            # Parse output
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+            # Extract coverage
+            coverage: Optional[float] = None
+            for line in stdout.splitlines():
+                if "TOTAL" in line and "%" in line:
+                    try:
+                        coverage = float(line.split("%")[0].strip().split()[-1])
+                    except (ValueError, IndexError):
+                        pass
+
+            # Determine status
             if process.returncode == 0:
                 status = "passed"
-                message = None
             elif process.returncode == 1:
                 status = "failed"
-                message = self._extract_failure_message(stdout_str or "")
-            elif process.returncode == 2:
-                status = "error"
-                message = stderr_str
+            elif process.returncode == 5:
+                status = "skipped"
             else:
                 status = "error"
-                message = f"Process returned {process.returncode}"
-            
-            # Extract coverage if available
-            coverage = self._extract_coverage(stdout_str or "")
-            
-            result = TestResult(
-                test_id=test.id,
-                status=status,
-                duration=duration,
-                message=message,
-                stdout=stdout_str,
-                stderr=stderr_str,
-                coverage=coverage
-            )
-            
-            self._results[test.id] = result
-            return result
-            
-        except asyncio.TimeoutError:
+
+            # Extract error information
+            error_message: Optional[str] = None
+            error_type: Optional[str] = None
+            error_traceback: Optional[str] = None
+
+            if status in ("failed", "error"):
+                # Parse pytest output for error information
+                error_lines: List[str] = []
+                in_traceback = False
+
+                for line in stderr.splitlines():
+                    if line.startswith("E   "):
+                        if not error_message:
+                            error_message = line[4:]
+                        error_lines.append(line[4:])
+                    elif "Traceback" in line:
+                        in_traceback = True
+                    elif in_traceback and line.strip():
+                        error_lines.append(line)
+
+                if error_lines:
+                    error_traceback = "\n".join(error_lines)
+                    # Try to extract error type
+                    for line in error_lines:
+                        if ": " in line:
+                            error_type = line.split(": ")[0].strip()
+                            break
+
             return TestResult(
                 test_id=test.id,
-                status="error",
-                duration=self.config.timeout,
-                message=f"Test timed out after {self.config.timeout} seconds"
+                status=status,
+                duration=time.time() - start_time,
+                stdout=stdout,
+                stderr=stderr,
+                coverage=coverage,
+                error_message=error_message,
+                error_type=error_type,
+                error_traceback=error_traceback,
             )
-            
+
         except Exception as e:
             return TestResult(
                 test_id=test.id,
                 status="error",
-                duration=0.0,
-                message=str(e)
+                duration=time.time() - start_time,
+                error_message=str(e),
+                error_type=type(e).__name__,
             )
-            
-        finally:
-            self._running.remove(test.id)
-    
-    def _extract_failure_message(self, output: str) -> Optional[str]:
-        """Extract failure message from pytest output"""
-        # TODO: Implement proper pytest output parsing
-        return output.split("FAILED")[-1].strip() if "FAILED" in output else None
-    
-    def _extract_coverage(self, output: str) -> Optional[float]:
-        """Extract coverage percentage from pytest-cov output"""
-        try:
-            # Look for coverage percentage in output
-            for line in output.split('\n'):
-                if "TOTAL" in line and "%" in line:
-                    return float(line.split()[-1].strip('%'))
-        except:
-            pass
-        return None
-    
+
     async def run_tests(self, tests: List[TestInfo]) -> Dict[str, TestResult]:
-        """Run multiple tests in parallel
-        
+        """Run multiple tests in parallel.
+
         Args:
-            tests: List of tests to run
-            
+            tests: Tests to run.
+
         Returns:
-            Dictionary mapping test IDs to results
+            Dictionary mapping test IDs to results.
+
+        Raises:
+            ExecutionError: If test execution fails.
         """
-        jobs = self.config.parallel_jobs or len(tests)
-        tasks = [self._run_test(test) for test in tests]
-        
-        results = await asyncio.gather(*tasks)
-        return {result.test_id: result for result in results}
-    
-    def get_result(self, test_id: str) -> Optional[TestResult]:
-        """Get result for a specific test
-        
+        try:
+            # Create tasks for each test
+            tasks: List[Tuple[str, asyncio.Task[TestResult]]] = []
+            for test in tests:
+                task = asyncio.create_task(self.run_test(test))
+                tasks.append((test.id, task))
+
+            # Wait for all tasks to complete
+            results: Dict[str, TestResult] = {}
+            for test_id, task in tasks:
+                try:
+                    result = await task
+                    results[test_id] = result
+                except Exception as e:
+                    logger.error(f"Failed to run test {test_id}: {e}")
+                    results[test_id] = TestResult(
+                        test_id=test_id,
+                        status="error",
+                        duration=0.0,
+                        error_message=str(e),
+                        error_type=type(e).__name__,
+                    )
+
+            return results
+
+        except Exception as e:
+            raise ExecutionError(f"Failed to run tests: {str(e)}")
+
+    def get_coverage_report(self, results: Dict[str, TestResult]) -> Dict[str, float]:
+        """Generate coverage report from test results.
+
         Args:
-            test_id: Test identifier
-            
+            results: Test results.
+
         Returns:
-            Test result if available
+            Dictionary mapping files to coverage percentages.
         """
-        return self._results.get(test_id)
-    
-    def clear_results(self) -> None:
-        """Clear all test results"""
-        self._results.clear()
-    
-    @property
-    def is_running(self) -> bool:
-        """Check if any tests are currently running"""
-        return bool(self._running)
+        coverage: Dict[str, float] = {}
+
+        for result in results.values():
+            if result.coverage is not None and result.stdout:
+                # Parse coverage output to get per-file coverage
+                for line in result.stdout.splitlines():
+                    if ".py" in line and "%" in line:
+                        try:
+                            parts = line.strip().split()
+                            file_path = parts[0]
+                            percentage = float(parts[-1].rstrip("%"))
+                            coverage[file_path] = percentage
+                        except (ValueError, IndexError):
+                            continue
+
+        return coverage

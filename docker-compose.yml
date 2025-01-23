@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  test-radar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount test directories
+      - ${TEST_PATH:-./tests}:/app/tests
+      # Mount reports directory for output
+      - ./reports:/app/reports
+      # Mount cache directory for ChromaDB
+      - ./.cache:/app/.cache
+      # Mount AWS credentials
+      - ${AWS_CREDENTIALS_PATH:-~/.aws}:/root/.aws:ro
+    environment:
+      # AWS Configuration
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_BEDROCK_MODEL_ID=${AWS_BEDROCK_MODEL_ID:-us.anthropic.claude-3-5-sonnet-20241022-v2:0}
+      # Test Configuration
+      - TEST_PARALLEL_JOBS=${TEST_PARALLEL_JOBS:-2}
+      - TEST_TIMEOUT=${TEST_TIMEOUT:-300}
+      - TEST_COVERAGE_TARGET=${TEST_COVERAGE_TARGET:-95.0}
+      # Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/reports/test-radar.log
+    networks:
+      - test-radar-net
+
+networks:
+  test-radar-net:
+    driver: bridge

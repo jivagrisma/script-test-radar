@@ -1,127 +1,250 @@
 """
 Logging configuration for test-radar.
-Provides rich console output and file logging with color support.
+
+Provides centralized logging setup and utilities.
 """
 
 import logging
-import sys
+import os
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Dict, Optional
 
-import colorlog
 from rich.console import Console
 from rich.logging import RichHandler
 
 # Constants
-DEFAULT_LOG_FORMAT = "%(log_color)s%(levelname)-8s%(reset)s %(message)s"
-DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-LOG_COLORS = {
-    'DEBUG': 'cyan',
-    'INFO': 'green',
-    'WARNING': 'yellow',
-    'ERROR': 'red',
-    'CRITICAL': 'red,bg_white',
-}
+DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
+BACKUP_COUNT = 5
+
+# Rich console for fancy output
+console = Console()
+
 
 class RadarLogger:
-    """Custom logger for test-radar"""
-    
+    """Custom logger with rich output and file logging."""
+
     def __init__(
         self,
-        name: str = "test-radar",
-        level: str = "INFO",
-        log_file: Optional[Union[str, Path]] = None,
-        console: bool = True
-    ):
-        """Initialize logger
-        
+        name: str,
+        level: str = DEFAULT_LOG_LEVEL,
+        log_file: Optional[str] = None,
+        format: str = DEFAULT_LOG_FORMAT,
+    ) -> None:
+        """Initialize logger.
+
         Args:
-            name: Logger name
-            level: Logging level
-            log_file: Optional path to log file
-            console: Whether to enable console output
+            name: Logger name.
+            level: Log level.
+            log_file: Optional log file path.
+            format: Log format string.
         """
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(level)
-        self.logger.propagate = False
-        
-        # Clear any existing handlers
-        self.logger.handlers.clear()
-        
-        if console:
-            self._setup_console_handler()
-            
+        self.logger.setLevel(level.upper())
+
+        # Remove existing handlers
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+
+        # Add rich console handler
+        rich_handler = RichHandler(
+            console=console, show_path=False, enable_link_path=True
+        )
+        rich_handler.setFormatter(logging.Formatter("%(message)s"))
+        self.logger.addHandler(rich_handler)
+
+        # Add file handler if log file specified
         if log_file:
-            self._setup_file_handler(log_file)
-    
-    def _setup_console_handler(self) -> None:
-        """Setup rich console handler with colors"""
-        console = Console()
-        handler = RichHandler(
-            console=console,
-            show_time=True,
-            show_path=False,
-            enable_link_path=True
-        )
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        self.logger.addHandler(handler)
-    
-    def _setup_file_handler(self, log_file: Union[str, Path]) -> None:
-        """Setup file handler with color support
-        
-        Args:
-            log_file: Path to log file
-        """
-        log_file = Path(log_file)
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        handler = colorlog.StreamHandler(open(log_file, 'a'))
-        handler.setFormatter(
-            colorlog.ColoredFormatter(
-                DEFAULT_LOG_FORMAT,
-                datefmt=DEFAULT_DATE_FORMAT,
-                log_colors=LOG_COLORS
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            file_handler = RotatingFileHandler(
+                log_path, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT
             )
+            file_handler.setFormatter(logging.Formatter(format))
+            self.logger.addHandler(file_handler)
+
+    def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log debug message.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.debug(msg, *args, **kwargs)
+
+    def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log info message.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.info(msg, *args, **kwargs)
+
+    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log warning message.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.warning(msg, *args, **kwargs)
+
+    def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log error message.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.error(msg, *args, **kwargs)
+
+    def critical(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log critical message.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.critical(msg, *args, **kwargs)
+
+    def exception(self, msg: str, *args: Any, exc_info: bool = True, **kwargs: Any) -> None:
+        """Log exception with traceback.
+
+        Args:
+            msg: Message to log.
+            *args: Additional positional arguments.
+            exc_info: Whether to include exception info.
+            **kwargs: Additional keyword arguments.
+        """
+        self.logger.exception(msg, *args, exc_info=exc_info, **kwargs)
+
+
+class TestLogger(RadarLogger):
+    """Logger specifically for test execution."""
+
+    def __init__(self, test_id: str, **kwargs: Any) -> None:
+        """Initialize test logger.
+
+        Args:
+            test_id: Test identifier.
+            **kwargs: Additional logger arguments.
+        """
+        super().__init__(f"test.{test_id}", **kwargs)
+        self.test_id = test_id
+
+    def start_test(self) -> None:
+        """Log test start."""
+        self.info(f"Starting test {self.test_id}")
+
+    def end_test(self, status: str, duration: float) -> None:
+        """Log test completion.
+
+        Args:
+            status: Test status.
+            duration: Test duration in seconds.
+        """
+        self.info(f"Test {self.test_id} {status} (duration: {duration:.2f}s)")
+
+    def log_error(self, error: Exception, traceback: Optional[str] = None) -> None:
+        """Log test error.
+
+        Args:
+            error: Exception that occurred.
+            traceback: Optional traceback string.
+        """
+        self.error(f"Test {self.test_id} failed: {str(error)}")
+        if traceback:
+            self.debug(f"Traceback:\n{traceback}")
+
+
+class AnalysisLogger(RadarLogger):
+    """Logger specifically for test analysis."""
+
+    def __init__(self, test_id: str, **kwargs: Any) -> None:
+        """Initialize analysis logger.
+
+        Args:
+            test_id: Test identifier.
+            **kwargs: Additional logger arguments.
+        """
+        super().__init__(f"analysis.{test_id}", **kwargs)
+        self.test_id = test_id
+
+    def log_analysis_start(self) -> None:
+        """Log analysis start."""
+        self.info(f"Starting analysis of test {self.test_id}")
+
+    def log_analysis_result(self, issues: int, suggestions: int, fixes: int) -> None:
+        """Log analysis results.
+
+        Args:
+            issues: Number of issues found.
+            suggestions: Number of suggestions made.
+            fixes: Number of fixes proposed.
+        """
+        self.info(
+            f"Analysis complete for {self.test_id}: "
+            f"{issues} issues, {suggestions} suggestions, "
+            f"{fixes} fixes"
         )
-        self.logger.addHandler(handler)
 
-def setup_logger(
-    name: str = "test-radar",
-    level: str = "INFO",
-    log_file: Optional[Union[str, Path]] = None,
-    console: bool = True
-) -> logging.Logger:
-    """Setup and return a configured logger
-    
+    def log_llm_error(self, error: Exception) -> None:
+        """Log LLM-related error.
+
+        Args:
+            error: Exception that occurred.
+        """
+        self.error(f"LLM analysis failed for {self.test_id}: {str(error)}")
+
+
+def setup_logger(level: Optional[str] = None, log_file: Optional[str] = None) -> RadarLogger:
+    """Set up root logger.
+
     Args:
-        name: Logger name
-        level: Logging level
-        log_file: Optional path to log file
-        console: Whether to enable console output
-        
-    Returns:
-        Configured logger instance
-    """
-    logger = RadarLogger(
-        name=name,
-        level=level,
-        log_file=log_file,
-        console=console
-    )
-    return logger.logger
+        level: Optional log level override.
+        log_file: Optional log file path.
 
-# Default logger instance
-logger = setup_logger()
-
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Get a logger instance
-    
-    Args:
-        name: Optional logger name
-        
     Returns:
-        Logger instance
+        Configured logger.
     """
-    if name:
-        return logging.getLogger(name)
+    # Get log level from environment or use default
+    log_level = (level or os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL)).upper()
+
+    # Get log file from environment if not provided
+    log_file = log_file or os.getenv("LOG_FILE")
+
+    # Create logger
+    logger = RadarLogger("test_radar", level=log_level, log_file=log_file)
+
+    # Log startup information
+    logger.info("Test Radar starting up")
+    logger.info(f"Log level: {log_level}")
+    if log_file:
+        logger.info(f"Logging to file: {log_file}")
+
     return logger
+
+
+def get_logger(name: str) -> RadarLogger:
+    """Get logger for module.
+
+    Args:
+        name: Module name.
+
+    Returns:
+        Logger instance.
+    """
+    return RadarLogger(name)
+
+
+# Configure logging on import
+logger = setup_logger()

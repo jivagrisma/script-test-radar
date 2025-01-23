@@ -1,121 +1,172 @@
 """
 Configuration management for test-radar.
-Handles all configuration settings and provides validation through Pydantic models.
+
+Handles loading and validation of configuration from files and environment variables.
 """
 
+import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field, validator
+
+from pydantic import BaseModel, Field
+
 
 class TestConfig(BaseModel):
-    """Base configuration for test execution"""
-    python_path: str = Field(default="python3.11", description="Python interpreter to use")
-    test_paths: List[Path] = Field(default_factory=list, description="Paths to test files/directories")
-    exclude_patterns: List[str] = Field(default_factory=lambda: [".*", "__pycache__"], 
-                                      description="Patterns to exclude")
-    parallel_jobs: int = Field(default=0, description="Number of parallel jobs (0 = auto)")
-    timeout: int = Field(default=300, description="Test timeout in seconds")
-    coverage_target: float = Field(default=95.0, description="Target coverage percentage")
-    
-    @validator('parallel_jobs')
-    def validate_jobs(cls, v: int) -> int:
-        """Validate number of parallel jobs"""
-        if v < 0:
-            raise ValueError("parallel_jobs must be >= 0")
-        return v
+    """Test execution configuration."""
+
+    python_path: str = "python3"
+    test_paths: List[str] = []
+    exclude_patterns: List[str] = ["__pycache__", ".pytest_cache"]
+    parallel_jobs: int = 0
+    timeout: int = 300
+    coverage_target: float = 95.0
+
 
 class VSCodeConfig(BaseModel):
-    """VSCode integration configuration"""
-    auto_discover: bool = Field(default=True, description="Auto-discover tests on file changes")
-    show_output: bool = Field(default=True, description="Show test output in VSCode")
-    debug_config: Dict[str, Any] = Field(default_factory=dict, description="Debug configuration")
-    decoration_enabled: bool = Field(default=True, description="Enable error decorations")
+    """VSCode integration configuration."""
+
+    auto_discover: bool = True
+    show_output: bool = True
+    debug_config: Dict[str, Any] = {}
+
 
 class AWSConfig(BaseModel):
-    """AWS configuration"""
-    access_key_id: str = Field(..., description="AWS access key ID")
-    secret_access_key: str = Field(..., description="AWS secret access key")
-    region: str = Field(default="us-east-1", description="AWS region")
-    bedrock_model_id: str = Field(
-        default="anthropic.claude-3-sonnet-20240229-v1:0",
-        description="AWS Bedrock model ID"
+    """AWS Bedrock configuration."""
+
+    access_key_id: str
+    secret_access_key: str
+    region: str = "us-east-1"
+    bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    headers: Dict[str, str] = Field(
+        default_factory=lambda: {"anthropic-beta": "prompt-caching-2024-07-31"}
     )
-    
-    @validator('region')
-    def validate_region(cls, v: str) -> str:
-        """Validate AWS region"""
-        valid_regions = [
-            "us-east-1", "us-west-2", "eu-west-1",
-            "ap-southeast-1", "ap-northeast-1"
-        ]
-        if v not in valid_regions:
-            raise ValueError(f"region must be one of {valid_regions}")
-        return v
+
 
 class LLMConfig(BaseModel):
-    """Configuration for LLM integration"""
-    temperature: float = Field(default=0.7, description="Model temperature")
-    max_tokens: int = Field(default=2000, description="Maximum tokens per request")
-    context_window: int = Field(default=100000, description="Context window size")
-    aws: AWSConfig = Field(..., description="AWS configuration")
-    
-    @validator('temperature')
-    def validate_temperature(cls, v: float) -> float:
-        """Validate temperature range"""
-        if not 0 <= v <= 1:
-            raise ValueError("temperature must be between 0 and 1")
-        return v
+    """LLM configuration."""
+
+    temperature: float = 0.0
+    max_tokens: int = 8192
+    context_window: int = 100000
+    aws: AWSConfig
+
 
 class RadarConfig(BaseModel):
-    """Main configuration class"""
-    test: TestConfig = Field(default_factory=TestConfig, description="Test configuration")
-    vscode: VSCodeConfig = Field(default_factory=VSCodeConfig, description="VSCode configuration")
-    llm: LLMConfig = Field(..., description="LLM configuration")
-    log_level: str = Field(default="INFO", description="Logging level")
-    cache_dir: Path = Field(default=Path(".cache"), description="Cache directory")
-    report_dir: Path = Field(default=Path("reports"), description="Report directory")
-    report_format: str = Field(default="html", description="Report format")
-    
-    @validator('log_level')
-    def validate_log_level(cls, v: str) -> str:
-        """Validate logging level"""
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        v = v.upper()
-        if v not in valid_levels:
-            raise ValueError(f"log_level must be one of {valid_levels}")
-        return v
-    
-    @validator('report_format')
-    def validate_report_format(cls, v: str) -> str:
-        """Validate report format"""
-        valid_formats = ["html", "json", "txt"]
-        v = v.lower()
-        if v not in valid_formats:
-            raise ValueError(f"report_format must be one of {valid_formats}")
-        return v
+    """Main configuration."""
 
-    class Config:
-        """Pydantic config"""
-        arbitrary_types_allowed = True
+    test: TestConfig
+    vscode: VSCodeConfig
+    llm: LLMConfig
+    log_level: str = "INFO"
+    cache_dir: str = ".cache"
+    report_dir: str = "reports"
+    report_format: str = "html"
 
-def load_config(config_path: Union[str, Path]) -> RadarConfig:
-    """Load configuration from file"""
-    config_path = Path(config_path)
+
+def load_config(config_path: Optional[Union[str, Path]] = None) -> RadarConfig:
+    """Load configuration from file and environment variables.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Loaded configuration.
+
+    Raises:
+        FileNotFoundError: If config file not found.
+        ValueError: If config is invalid.
+    """
+    # Default config path
+    if not config_path:
+        config_path = os.getenv("TEST_RADAR_CONFIG", "test_config.json")
+
+    if isinstance(config_path, str):
+        config_path = Path(config_path)
+
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    
-    try:
-        config_dict = config_path.read_text()
-        return RadarConfig.model_validate_json(config_dict)
-    except Exception as e:
-        raise ValueError(f"Failed to load config: {e}") from e
 
-def save_config(config: RadarConfig, config_path: Union[str, Path]) -> None:
-    """Save configuration to file"""
-    config_path = Path(config_path)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    
+    # Load config file
+    with open(config_path) as f:
+        config_data = json.load(f)
+
+    # Override with environment variables
+    config_data["test"]["python_path"] = os.getenv(
+        "PYTHON_PATH", config_data["test"]["python_path"]
+    )
+    config_data["test"]["parallel_jobs"] = int(
+        os.getenv("TEST_PARALLEL_JOBS", str(config_data["test"]["parallel_jobs"]))
+    )
+    config_data["test"]["timeout"] = int(
+        os.getenv("TEST_TIMEOUT", str(config_data["test"]["timeout"]))
+    )
+    config_data["test"]["coverage_target"] = float(
+        os.getenv("TEST_COVERAGE_TARGET", str(config_data["test"]["coverage_target"]))
+    )
+
+    config_data["vscode"]["auto_discover"] = (
+        os.getenv("VSCODE_AUTO_DISCOVER", "true").lower() == "true"
+    )
+    config_data["vscode"]["show_output"] = (
+        os.getenv("VSCODE_SHOW_OUTPUT", "true").lower() == "true"
+    )
+
+    # AWS Bedrock configuration
+    config_data["llm"]["aws"]["access_key_id"] = os.getenv(
+        "AWS_ACCESS_KEY_ID", config_data["llm"]["aws"]["access_key_id"]
+    )
+    config_data["llm"]["aws"]["secret_access_key"] = os.getenv(
+        "AWS_SECRET_ACCESS_KEY", config_data["llm"]["aws"]["secret_access_key"]
+    )
+    config_data["llm"]["aws"]["region"] = os.getenv(
+        "AWS_REGION", config_data["llm"]["aws"]["region"]
+    )
+    config_data["llm"]["aws"]["bedrock_model_id"] = os.getenv(
+        "AWS_BEDROCK_MODEL_ID", config_data["llm"]["aws"]["bedrock_model_id"]
+    )
+
+    # Parse headers from environment if provided
+    headers_env = os.getenv("AWS_BEDROCK_HEADERS")
+    if headers_env:
+        try:
+            config_data["llm"]["aws"]["headers"] = json.loads(headers_env)
+        except json.JSONDecodeError:
+            raise ValueError("Invalid AWS_BEDROCK_HEADERS format. Must be valid JSON.")
+
+    # LLM configuration
+    config_data["llm"]["temperature"] = float(
+        os.getenv("LLM_TEMPERATURE", str(config_data["llm"]["temperature"]))
+    )
+    config_data["llm"]["max_tokens"] = int(
+        os.getenv("LLM_MAX_TOKENS", str(config_data["llm"]["max_tokens"]))
+    )
+    config_data["llm"]["context_window"] = int(
+        os.getenv("LLM_CONTEXT_WINDOW", str(config_data["llm"]["context_window"]))
+    )
+
+    config_data["log_level"] = os.getenv("LOG_LEVEL", config_data["log_level"])
+    config_data["cache_dir"] = os.getenv("CACHE_DIR", config_data["cache_dir"])
+    config_data["report_dir"] = os.getenv("REPORT_DIR", config_data["report_dir"])
+    config_data["report_format"] = os.getenv(
+        "REPORT_FORMAT", config_data["report_format"]
+    )
+
+    # Validate and create config object
     try:
-        config_path.write_text(config.model_dump_json(indent=2))
+        return RadarConfig(**config_data)
     except Exception as e:
-        raise ValueError(f"Failed to save config: {e}") from e
+        raise ValueError(f"Invalid configuration: {str(e)}")
+
+
+def get_default_config() -> RadarConfig:
+    """Get default configuration.
+
+    Returns:
+        Default configuration.
+    """
+    return RadarConfig(
+        test=TestConfig(),
+        vscode=VSCodeConfig(),
+        llm=LLMConfig(aws=AWSConfig(access_key_id="", secret_access_key="")),
+    )
