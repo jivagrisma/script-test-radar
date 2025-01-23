@@ -2,7 +2,7 @@
   "test": {
     "python_path": "python3",
     "test_paths": [
-      "tests"
+      "test_samples"
     ],
     "exclude_patterns": [
       "__pycache__",
@@ -10,7 +10,7 @@
     ],
     "parallel_jobs": 2,
     "timeout": 300,
-    "coverage_target": 95.0
+    "coverage_target": 90.0
   },
   "vscode": {
     "auto_discover": true,
@@ -18,21 +18,18 @@
     "debug_config": {}
   },
   "llm": {
-    "temperature": 0.0,
+    "temperature": 0.1,
     "max_tokens": 8192,
     "context_window": 100000,
     "aws": {
       "access_key_id": "YOUR_AWS_ACCESS_KEY_ID",
       "secret_access_key": "YOUR_AWS_SECRET_ACCESS_KEY",
-      "region": "us-east-1",
-      "bedrock_model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-      "headers": {
-        "anthropic-beta": "prompt-caching-2024-07-31"
-      }
+      "region": "YOUR_AWS_REGION",
+      "bedrock_model_id": "YOUR_BEDROCK_MODEL_ID"
     }
   },
   "log_level": "INFO",
   "cache_dir": ".cache",
   "report_dir": "reports",
-  "report_format": "html"
+  "report_format": "markdown"
 }
