@@ -1,6 +1,6 @@
 # Test Radar
 
-Test Radar es una herramienta de análisis inteligente de tests que utiliza AWS Bedrock y Claude 3.5 Sonnet para proporcionar sugerencias de mejora y detectar problemas potenciales en tus tests de Python.
+Test Radar es una herramienta de análisis inteligente de tests que utiliza AWS Bedrock y Claude 3.5 Sonnet para proporcionar sugerencias de mejora y detectar problemas potenciales en tus tests de Python, ayudando a alcanzar y mantener una cobertura de pruebas superior al 95%.
 
 ## Características
 
@@ -10,6 +10,40 @@ Test Radar es una herramienta de análisis inteligente de tests que utiliza AWS 
 - Recomendaciones de cobertura
 - Análisis de rendimiento
 - Generación de informes detallados
+
+## Beneficios para Alta Cobertura
+
+1. Análisis Inteligente:
+   - Identifica áreas sin cobertura suficiente
+   - Sugiere casos de prueba específicos
+   - Proporciona ejemplos de código listos para usar
+   - Detecta casos límite y escenarios no probados
+
+2. Tipos de Pruebas Recomendadas:
+   ```python
+   # Property-based testing
+   @given(st.floats(), st.floats())
+   def test_multiply_properties(self, a, b):
+       result = self.calc.multiply(a, b)
+       assert result == b * a  # Propiedad conmutativa
+
+   # Pruebas parametrizadas
+   @pytest.mark.parametrize("a,b,expected", [
+       (2, 3, 6),
+       (-2, 3, -6),
+       (0, 5, 0)
+   ])
+   def test_multiply_parametrized(self, a, b, expected):
+       assert self.calc.multiply(a, b) == expected
+
+   # Pruebas de rendimiento
+   def test_performance(self):
+       start_time = time.time()
+       for _ in range(1000):
+           self.calc.multiply(2.5, 3.5)
+       duration = time.time() - start_time
+       assert duration < 1.0  # Debe completarse en menos de 1 segundo
+   ```
 
 ## Requisitos
 
@@ -25,100 +59,97 @@ git clone https://github.com/jivagrisma/script-test-radar.git
 cd test-radar
 ```
 
-2. Ejecutar el script de instalación:
+2. Configurar credenciales:
+```bash
+cp .env.example .env
+# Editar .env con las credenciales de AWS Bedrock:
+# AWS_ACCESS_KEY_ID=your_key
+# AWS_SECRET_ACCESS_KEY=your_secret
+# AWS_REGION=us-east-1
+# BEDROCK_MODEL_ID=your_model_id
+```
+
+3. Ejecutar el script de instalación:
 ```bash
 chmod +x install_and_run.sh
 ./install_and_run.sh
 ```
 
-El script realizará automáticamente:
-- Verificación de requisitos
-- Configuración de credenciales AWS a través del archivo .env
-- Creación de directorios necesarios
-- Construcción de la imagen Docker
-- Configuración inicial
+## Uso para Alta Cobertura
 
-## Configuración
+1. Preparación:
+   - Coloca tus archivos de test en `test_samples/`
+   - Asegúrate de que el archivo .env está configurado
+   - Verifica que Docker está corriendo
 
-La configuración se realiza a través del archivo `.env`. Durante la instalación, el script te pedirá:
-
-1. AWS Access Key ID
-2. AWS Secret Access Key
-3. AWS Region (por defecto: us-east-1)
-4. Bedrock Model ID (por defecto: us.anthropic.claude-3-5-sonnet-20241022-v2:0)
-
-También puedes editar el archivo `.env` manualmente:
-
-```env
-# AWS Credentials
-AWS_ACCESS_KEY_ID=your_access_key_here
-AWS_SECRET_ACCESS_KEY=your_secret_key_here
-AWS_REGION=us-east-1
-
-# Bedrock Configuration
-BEDROCK_MODEL_ID=us.anthropic.claude-3-5-sonnet-20241022-v2:0
-```
-
-## Uso
-
-### 1. Preparación de Tests
-
-Coloca tus archivos de test en el directorio `test_samples/`. Por ejemplo:
-
-```
-test_samples/
-├── test_calculator.py
-└── test_api.py
-```
-
-### 2. Ejecución del Análisis
-
+2. Análisis Inicial:
 ```bash
 docker-compose up
 ```
 
-### 3. Resultados
+3. Implementar Mejoras:
+   - Revisa el reporte en `reports/`
+   - Implementa las sugerencias proporcionadas
+   - Agrega los casos de prueba recomendados
 
-Los resultados se guardan en el directorio `reports/` en formato Markdown. Para cada test, se proporciona:
+4. Verificar Mejoras:
+   - Ejecuta el análisis nuevamente
+   - Revisa el nuevo reporte de cobertura
+   - Repite el proceso hasta alcanzar >95%
 
-- Lista de problemas potenciales
-- Sugerencias de mejora
-- Ejemplos de código
-- Recomendaciones de cobertura
-- Métricas de rendimiento
+## Ejemplos de Mejoras de Cobertura
 
-## Ejemplos de Uso
-
-### 1. Análisis de Tests Unitarios
+### 1. Pruebas Básicas a Completas
 ```python
-# test_samples/test_calculator.py
-class TestCalculator(unittest.TestCase):
-    def test_add(self):
-        calc = Calculator()
-        self.assertEqual(calc.add(2, 3), 5)
+# Antes
+def test_add(self):
+    self.assertEqual(calc.add(2, 3), 5)
+
+# Después
+def test_add_comprehensive(self):
+    # Casos básicos
+    self.assertEqual(calc.add(2, 3), 5)
+
+    # Casos límite
+    self.assertEqual(calc.add(0, 0), 0)
+    self.assertEqual(calc.add(-1, 1), 0)
+
+    # Números grandes
+    self.assertEqual(calc.add(sys.maxsize-1, 1), sys.maxsize)
+
+    # Flotantes
+    self.assertAlmostEqual(calc.add(0.1, 0.2), 0.3)
 ```
 
-Test Radar analizará este código y sugerirá mejoras como:
-- Agregar pruebas parametrizadas
-- Implementar property-based testing
-- Mejorar la documentación
-- Agregar casos límite
-
-### 2. Análisis de Tests de API
+### 2. Property-Based Testing
 ```python
-# test_samples/test_api.py
-class TestUserAPI(unittest.TestCase):
-    def test_create_user(self):
-        api = UserAPI()
-        user = api.create_user("test", "test@example.com")
-        self.assertEqual(user.username, "test")
+@given(st.floats(allow_nan=False, allow_infinity=False),
+       st.floats(allow_nan=False, allow_infinity=False))
+def test_multiply_properties(self, a, b):
+    result = self.calc.multiply(a, b)
+    # Propiedad conmutativa
+    assert abs(result - self.calc.multiply(b, a)) < 1e-10
+    # Propiedad con cero
+    assert self.calc.multiply(a, 0) == 0
+    # Propiedad con uno
+    assert self.calc.multiply(a, 1) == a
 ```
 
-Test Radar sugerirá mejoras como:
-- Agregar validación de entrada
-- Implementar pruebas de concurrencia
-- Mejorar el manejo de errores
-- Agregar pruebas de rendimiento
+### 3. Pruebas de Concurrencia
+```python
+def test_concurrent_access(self):
+    """Test concurrent API access."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def create_user(i):
+        return self.api.create_user(f"user{i}", f"user{i}@example.com")
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(create_user, i) for i in range(100)]
+        results = [f.result() for f in futures]
+
+    self.assertEqual(len(self.api.list_users()), 100)
+```
 
 ## Integración Continua
 
@@ -148,7 +179,7 @@ jobs:
 ```
 Error: Failed to generate response: AccessDeniedException
 ```
-Solución: Verifica tus credenciales AWS en el archivo .env y asegúrate de tener acceso a Bedrock.
+Solución: Verifica tus credenciales en el archivo .env y asegúrate de tener acceso a Bedrock.
 
 ### Error de Timeout
 ```
