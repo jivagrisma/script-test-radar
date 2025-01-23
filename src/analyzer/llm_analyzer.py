@@ -5,6 +5,7 @@ Provides intelligent analysis of test results and code using Claude through AWS 
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -50,22 +51,27 @@ class BedrockLLM:
         """Initialize Bedrock client with advanced configuration.
 
         Args:
-            config: LLM configuration including AWS credentials and model settings.
+            config: LLM configuration including model settings.
         """
         self.config = config
 
         # Configure AWS client with retry logic
         aws_config = Config(
-            region_name=config.aws.region,
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
             retries={"max_attempts": 3, "mode": "adaptive"},
         )
 
-        # Initialize Bedrock client with credentials
+        # Initialize Bedrock client with credentials from environment
         self.client = boto3.client(
             service_name="bedrock-runtime",
-            aws_access_key_id=config.aws.access_key_id,
-            aws_secret_access_key=config.aws.secret_access_key,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
             config=aws_config,
+        )
+
+        # Get model ID from environment or use default
+        self.model_id = os.getenv(
+            "BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
         )
 
     async def generate(self, prompt: str) -> str:
@@ -91,7 +97,7 @@ class BedrockLLM:
 
             # Invoke model
             response = self.client.invoke_model(
-                modelId=self.config.aws.bedrock_model_id,
+                modelId=self.model_id,
                 body=json.dumps(request_body),
                 contentType="application/json",
                 accept="application/json",
@@ -118,7 +124,7 @@ class BedrockLLM:
                 )
             if "ResourceNotFoundException" in str(e):
                 raise LLMError(
-                    f"Model {self.config.aws.bedrock_model_id} not found in region {self.config.aws.region}",
+                    f"Model {self.model_id} not found in region {os.getenv('AWS_REGION')}",
                     cause=e,
                 )
             if "ThrottlingException" in str(e):
@@ -270,7 +276,7 @@ class LLMAnalyzer:
         return prompt
 
     def _parse_claude_response(self, response: str) -> TestAnalysis:
-        """Parse Claude's response into structured analysis with enhanced error handling.
+        """Parse Claude's response into structured analysis.
 
         Args:
             response: Raw response from Claude.
@@ -282,7 +288,6 @@ class LLMAnalyzer:
             LLMError: If response cannot be parsed.
         """
         try:
-            # Extract sections from response
             sections = response.split("\n\n")
 
             issues: List[str] = []
@@ -315,7 +320,6 @@ class LLMAnalyzer:
                         line.strip("- ") for line in section.split("\n") if line.strip()
                     )
                 elif current_section == "fixes":
-                    # Enhanced code fix parsing
                     if "```" in section:
                         blocks = section.split("```")
                         for i in range(1, len(blocks) - 1, 2):

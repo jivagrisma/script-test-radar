@@ -9,11 +9,9 @@ services:
       - .:/app
       - ./reports:/app/reports
       - ./test_samples:/app/test_samples
+    env_file:
+      - .env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1}
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
     command: python3 run_analysis.py
